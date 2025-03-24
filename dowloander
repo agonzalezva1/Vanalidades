@@ -1,0 +1,109 @@
+import os
+import yt_dlp
+
+def crear_directorio(descarga_dir):
+    os.makedirs(descarga_dir, exist_ok=True)
+    return os.path.abspath(descarga_dir)
+
+
+def obtener_url():
+    return input("Ingresa la URL del video (Instagram/YouTube/TikTok/etc): ").strip()
+
+
+def listar_formatos(formats):
+    formatos_video = [fmt for fmt in formats if fmt.get('vcodec') != 'none']
+
+    if not formatos_video:
+        print("No se encontraron formatos de video disponibles.")
+        return None
+
+    formatos_video.sort(key=lambda x: x.get('height', 0), reverse=True)
+
+    print("\n🎬 Formatos disponibles:")
+    for i, fmt in enumerate(formatos_video):
+        resolucion = fmt.get('height', 'Desconocida')
+        formato = fmt.get('format_note', fmt.get('ext', 'Formato desconocido'))
+        print(f"{i + 1}: {resolucion}p - {formato}")
+
+    return formatos_video
+
+
+def seleccionar_formato(formatos_video):
+    while True:
+        try:
+            seleccion = int(input("\n👉 Elige el número del formato deseado: ")) - 1
+            if 0 <= seleccion < len(formatos_video):
+                return formatos_video[seleccion]['format_id']
+            print("Error: número fuera de rango.")
+        except ValueError:
+            print("Error: ingresa un número válido.")
+
+
+def solicitar_credenciales():
+    usuario = input("Usuario: ").strip()
+    contraseña = input("Contraseña: ").strip()
+    return usuario, contraseña
+
+
+def descargar_video_con_ytdlp(url, ydl_opts):
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+
+def procesar_descarga(url, ydl_opts):
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    
+    formatos_video = listar_formatos(info.get('formats', []))
+    if not formatos_video:
+        return False
+    
+    ydl_opts['format'] = seleccionar_formato(formatos_video)
+    print("\n⏳ Descargando...")
+    descargar_video_con_ytdlp(url, ydl_opts)
+    return True
+
+
+def descargar_video():
+    download_dir = crear_directorio('./descargaspy')
+    url = obtener_url()
+
+    ydl_opts = {
+        'outtmpl': os.path.join(download_dir, '%(title)s.%(ext)s'),
+        'noplaylist': True,
+        'quiet': True,
+        'no_warnings': False
+    }
+
+    try:
+        if procesar_descarga(url, ydl_opts):
+            print(f"\n✅ Descarga completada en: {download_dir}")
+
+    except yt_dlp.utils.DownloadError as e:
+        error_msg = str(e).lower()
+        if 'private' in error_msg or 'login' in error_msg:
+            print("\n🔒 El contenido es privado o requiere autenticación.")
+            usuario, contraseña = solicitar_credenciales()
+            
+            if usuario and contraseña:
+                ydl_opts.update({
+                    'username': usuario,
+                    'password': contraseña
+                })
+                try:
+                    if procesar_descarga(url, ydl_opts):
+                        print(f"\n✅ Descarga completada en: {download_dir}")
+                except Exception as e_auth:
+                    print(f"\n❌ Error de autenticación: {e_auth}")
+            else:
+                print("✋ Se requieren credenciales para descargar este contenido.")
+        else:
+            print(f"\n❌ Error al descargar: {e}")
+            print("Posibles causas:\n- URL inválida\n- Problemas de conexión\n- Restricciones geográficas")
+    
+    except Exception as e:
+        print(f"\n❌ Error inesperado: {e}")
+
+
+if __name__ == "__main__":
+    descargar_video()
